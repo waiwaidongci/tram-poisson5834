@@ -13,9 +13,20 @@ from src.utils.wakeup import broker
 log = logging.getLogger(__name__)
 
 
+def migrate(connection):
+    """补建既有数据库缺失的列，与 002 号迁移说明保持一致。"""
+    columns = {row[0] for row in connection.execute(text(
+        "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'datasets'"))}
+    if 'kind' not in columns:
+        connection.execute(text("ALTER TABLE datasets ADD COLUMN kind VARCHAR(20) NOT NULL DEFAULT 'blockage'"))
+
+
 @asynccontextmanager
 async def lifespan(_app):
     Base.metadata.create_all(engine)
+    with engine.begin() as connection:
+        migrate(connection)
     if SEED_DEMO:
         try:
             log.info('Seeded %s', seed())

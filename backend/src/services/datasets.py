@@ -4,8 +4,8 @@ import io
 import json
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from src.domain.demo import demo_rows
-from src.domain.spec import SPEC
+from src.domain.demo import demo_connection_rows, demo_rows
+from src.domain.spec import PROFILES
 from src.models.source import Dataset
 
 
@@ -14,14 +14,14 @@ def checksum(rows):
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-def save(db, name, filename, rows, actor):
+def save(db, name, filename, rows, actor, kind='blockage'):
     signature = checksum(rows)
     lookup = select(Dataset).where(Dataset.name == name, Dataset.checksum == signature)
     existing = db.scalar(lookup)
     if existing:
         return existing, False
     dataset = Dataset(name=name, filename=filename, checksum=signature, rows=rows,
-                      row_count=len(rows), author=actor)
+                      row_count=len(rows), author=actor, kind=kind)
     try:
         with db.begin_nested():
             db.add(dataset)
@@ -34,11 +34,12 @@ def save(db, name, filename, rows, actor):
     return dataset, True
 
 
-def template():
-    fields = [field['key'] for field in SPEC['fields']]
+def template(kind='blockage'):
+    profile = PROFILES[kind]
+    fields = [field['key'] for field in profile['fields']]
     buffer = io.StringIO(newline='')
     writer = csv.DictWriter(buffer, fieldnames=fields, extrasaction='ignore')
     writer.writeheader()
     # The complete representative dataset also works as a reproducible import fixture.
-    writer.writerows(demo_rows())
+    writer.writerows(demo_connection_rows() if kind == 'connections' else demo_rows())
     return '\ufeff' + buffer.getvalue()

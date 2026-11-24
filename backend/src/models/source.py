@@ -12,6 +12,7 @@ class Dataset(Base):
     name: Mapped[str] = mapped_column(String(120))
     filename: Mapped[str] = mapped_column(String(160))
     checksum: Mapped[str] = mapped_column(String(64))
+    kind: Mapped[str] = mapped_column(String(20), default='blockage')
     rows: Mapped[list] = mapped_column(JSON)
     row_count: Mapped[int]
     author: Mapped[str] = mapped_column(String(64))

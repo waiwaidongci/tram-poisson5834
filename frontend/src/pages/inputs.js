@@ -9,17 +9,24 @@ import {date} from '../utils/format.js';
 
 export async function inputs(route, refresh) {
   const {spec,datasets} = workspace;
+  const profiles = spec.profiles || {blockage: spec};
+  const profileOf = item => profiles[item?.kind] || spec;
   const selected = datasets.find(item => item.id === route.id) || datasets[0];
   const error = feedback();
-  const sample = button('下载示例 CSV', {class:'quiet',onClick:event=>handler(sample,error,()=>workspace.download('/template',spec.sample_name))(event)});
+  const samples = Object.values(profiles).map(profile => {
+    const sample = button(`下载示例 CSV（${profile.profile_name}）`, {class:'quiet'});
+    sample.addEventListener('click', handler(sample, error,
+      () => workspace.download(`/template?kind=${profile.kind}`, profile.sample_name)));
+    return sample;
+  });
   const detail = selected && await workspace.getDataset(selected.id,route.offset);
-  const columns = spec.fields.map(field => ({key:field.key,label:field.label}));
+  const columns = profileOf(selected).fields.map(field => ({key:field.key,label:field.label}));
   const preview = detail ? panel('批次明细', el('div',{class:'actions'},
     el('label',{for:'dataset-id',class:'sr'}, '选择数据批次'),
     el('select',{id:'dataset-id','aria-label':'选择数据批次',onChange:event=>{location.hash=`#inputs/${event.target.value}`;}},
       datasets.map(item=>el('option',{value:item.id,selected:item.id === selected.id}, item.name))),
     link('使用此批次运行',`#run/${detail.id}`,{class:'quiet'})),
-    p(`${detail.filename} · ${detail.row_count} 行 · ${date(detail.created_at)}`,'filename'),
+    p(`${profileOf(detail).profile_name} · ${detail.filename} · ${detail.row_count} 行 · ${date(detail.created_at)}`,'filename'),
     table(columns,detail.rows,{caption:'批次明细',pageSize:16}),
     el('div',{class:'pagination'},
       route.offset > 0 && link('上一批明细',`#inputs/${detail.id}/${Math.max(0,route.offset-16)}`,{class:'quiet'}),
@@ -39,7 +46,9 @@ export async function inputs(route, refresh) {
   })},field({key:'batch_name',label:'批次名称',type:'string',max_length:120}),
     el('label',{class:'field',for:'source'}, el('span',{},'业务 CSV'),el('input',{id:'source',type:'file',name:'source',accept:'.csv,text/csv',required:true})), submit);
   return el('div',{class:'two-col'},el('div',{class:'wide-panel'},preview),el('aside',{class:'sidebar-panel'},
-    panel('数据导入',p('导入后保留原批次和校验指纹，可用同一份数据复跑。','subtle'),sample,upload,error),
-    panel('字段说明',el('dl',{class:'dictionary'},spec.fields.map(item=>el('div',{},el('dt',{},item.label),
-      el('dd',{},item.key,item.required === false ? ' · 可空' : ' · 必填',item.options ? ` · ${item.options.join(' / ')}` : '')))))));
+    panel('数据导入',p('导入后保留原批次和校验指纹，可用同一份数据复跑。','subtle'),...samples,upload,error),
+    panel('字段说明',...Object.values(profiles).map(profile => el('div',{},
+      p(profile.profile_name,'eyeline'),
+      el('dl',{class:'dictionary'},profile.fields.map(item=>el('div',{},el('dt',{},item.label),
+        el('dd',{},item.key,item.required === false ? ' · 可空' : ' · 必填',item.options ? ` · ${item.options.join(' / ')}` : '')))))))));
 }

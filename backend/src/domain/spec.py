@@ -1,8 +1,10 @@
-"""有轨电车路口阻断计数预测的共享配置。"""
+"""有轨电车路口阻断计数预测与接驳影响试算的共享配置。"""
 
 SPEC = {
     "title": "有轨电车路口阻断计数预测",
     "short_name": "tram-poisson",
+    "kind": "blockage",
+    "profile_name": "过车与阻断",
     "subtitle": "按实际过车量校准阻断风险，给下一轮路口巡查排班。",
     "organization": "澄浦有轨电车 2 号线行车调度组，负责港湾路与科创大道沿线的四处平交路口。",
     "workflow": (
@@ -56,3 +58,34 @@ SPEC = {
     "fixture": {"holdout_days": 2, "severity_rate": 8},
     "axes": "偏差图纵轴为每窗口平均 Poisson 偏差。路口巡查图纵轴为同等车次下预计阻断次数。",
 }
+
+CONNECTIONS = {
+    "kind": "connections",
+    "profile_name": "接驳对账",
+    "entity": "接驳对账记录",
+    "run": "接驳影响试算",
+    "sample_name": "澄浦2号线接驳对账_20261120.csv",
+    "default_dataset": "澄浦 2 号线 11 月 20 日接驳对账",
+    "methodology": [
+        "一行是一条对账记录：班次到发（实到时刻、沿途确认阻断延误、待换乘人数）、接驳余座（发车时刻、余座）或晚到更正（更正后实到时刻）。",
+        "按日期和接驳点跨系统对账：班次或发车时刻重复、更正找不到班次、缺确认延误或待换乘人数、缺接驳余座的接驳点，来源对不齐，只报缺口，不参与试算。",
+        "同一接驳点同一日期共用一组接驳余座：按到达时刻先到先上，坐不下等下一班，末班走后仍未上车的记为没搭上。",
+        "实际队列用更正后的实到时刻，无阻断队列用实到扣除确认阻断延误后的时刻，两边用同一组接驳余座各排一次。",
+        "只算实际比无阻断晚搭上或没搭上的乘客。晚到更正先更新实到时刻，再重算被挤占座位的后续接驳班次。",
+    ],
+    "fields": [
+        {"key": "record", "label": "记录类型", "type": "select", "required": True,
+         "options": ["班次到发", "接驳余座", "晚到更正"]},
+        {"key": "date", "label": "日期", "type": "date", "required": True},
+        {"key": "point", "label": "接驳点", "type": "string", "required": True, "max_length": 80},
+        {"key": "trip", "label": "电车班次", "type": "string", "required": False, "max_length": 40},
+        {"key": "arrival", "label": "实到／更正时刻", "type": "time", "required": False},
+        {"key": "delay_min", "label": "确认阻断延误（分钟）", "type": "int", "required": False, "min": 0, "max": 240},
+        {"key": "waiting", "label": "待换乘人数", "type": "int", "required": False, "min": 0, "max": 5000},
+        {"key": "departure", "label": "接驳发车时刻", "type": "time", "required": False},
+        {"key": "seats", "label": "接驳余座", "type": "int", "required": False, "min": 0, "max": 5000},
+    ],
+    "params": [],
+}
+
+PROFILES = {"blockage": SPEC, "connections": CONNECTIONS}

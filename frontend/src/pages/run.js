@@ -8,17 +8,20 @@ import {workspace} from '../stores/workspace.js';
 import {button, el, link, p} from '../utils/dom.js';
 import {date} from '../utils/format.js';
 
-function runRequest(data, spec) {
+function runRequest(data, profile) {
   return {dataset_id:Number(data.get('dataset_id')),name:data.get('name'),
-    params:Object.fromEntries(spec.params.map(param=>[param.key,data.get(param.key)]))};
+    params:Object.fromEntries(profile.params.map(param=>[param.key,data.get(param.key)]))};
 }
 
 export async function runPage(route, refresh) {
   const {spec,datasets,runs} = workspace;
+  const profiles = spec.profiles || {blockage: spec};
+  const selected = datasets.find(item => item.id === route.id) || datasets[0];
+  const profile = (selected && profiles[selected.kind]) || spec;
   const scheduling = spec.scheduled && route.scheduling;
   const plans = scheduling ? await workspace.schedules() : [];
   const error = feedback();
-  const submit = button(`执行${spec.run}`,{type:'submit',class:'primary','data-testid':'start-run'});
+  const submit = button(`执行${profile.run}`,{type:'submit',class:'primary','data-testid':'start-run'});
   const plan = button('保存定时计划',{type:'button',class:'primary','data-testid':'save-schedule'});
   const scheduleFields = scheduling && session.canReview && el('details',{class:'schedule-fields'},
     el('summary',{},'定时站内分发'),
@@ -26,18 +29,20 @@ export async function runPage(route, refresh) {
     field({key:'recipient',label:'收件团队',type:'string',required:false,max_length:100}),
     field({key:'first_at',label:'首次执行时间（北京时间）',type:'datetime-local',required:false}),
     el('label',{class:'check'},el('input',{name:'repeat_daily',type:'checkbox'}),'每日同一时间运行'), plan);
+  const picker = datasetField(datasets,selected?.id);
+  picker.querySelector('select').addEventListener('change',event=>{location.hash=`#run/${event.target.value}`;});
   const form = el('form',{class:'fields','data-testid':'run-form',
     onSubmit:handler(submit,error,async event=>{
-      const item = await workspace.start(runRequest(new FormData(event.target),spec));
+      const item = await workspace.start(runRequest(new FormData(event.target),profile));
       location.hash = `#results/${item.id}`;
-    })}, datasetField(datasets,route.id),field({key:'name',label:'运行名称',type:'string',max_length:120},`样本${spec.run}`),
-    el('div',{class:'form-grid'},spec.params.map(param=>field(param))),el('div',{class:'actions'},submit),scheduleFields,error);
+    })}, picker,field({key:'name',label:'运行名称',type:'string',max_length:120},`样本${profile.run}`),
+    el('div',{class:'form-grid'},profile.params.map(param=>field(param))),el('div',{class:'actions'},submit),scheduleFields,error);
   plan.addEventListener('click',handler(plan,error,async()=>{
     if (!form.reportValidity()) return;
     const data = new FormData(form);
     const recipient = data.get('recipient'), start = data.get('first_at');
     if (!recipient?.trim() || !start) throw new Error('请填写收件团队和首次执行时间');
-    await workspace.schedule({...runRequest(data,spec),recipient,first_at:`${start}:00+08:00`,repeat_daily:data.has('repeat_daily')});
+    await workspace.schedule({...runRequest(data,profile),recipient,first_at:`${start}:00+08:00`,repeat_daily:data.has('repeat_daily')});
     await refresh();
   }));
   const runList = table([
@@ -58,8 +63,9 @@ export async function runPage(route, refresh) {
     }},
   ],plans,{caption:'定时计划',empty:'还未配置定时计划。'}));
   return el('div',{class:'two-col'}, el('div',{class:'wide-panel'},
-    panel(spec.run,session.canWrite ? (datasets.length ? form : empty('请先导入数据。','#inputs','前往导入'))
+    panel(profile.run,session.canWrite ? (datasets.length ? form : empty('请先导入数据。','#inputs','前往导入'))
       : p('只读角色可以查看上方业务流程的历史运行。','empty')),
     !scheduling && panel('运行记录',runList),scheduleList),
-    el('aside',{class:'sidebar-panel'},panel('计算口径',el('ul',{class:'method-list'},spec.methodology.map(text=>el('li',{},text))))));
+    el('aside',{class:'sidebar-panel'},panel('计算口径',el('ul',{class:'method-list'},
+      (profile.methodology || spec.methodology).map(text=>el('li',{},text))))));
 }
